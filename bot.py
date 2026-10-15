@@ -7,11 +7,23 @@ BOT_TOKEN = "8855553129:AAGbCJEtQZ9dDOvOEzNl8S-2fpPFqiUIGjM"
 CHANNEL_USERNAME = "@villainpremium"
 UPI_ID = "rishabhx07@fam"
 ADMIN_ID = 8551378606
-ADMIN_USERNAME = "iwontheracebaby"
+ADMIN_USERNAME = "rishabhx07"
 VOUCHES_LINK = "https://t.me/villainpremium"
 # =======================================================
 
 bot = telebot.TeleBot(BOT_TOKEN)
+
+# User ID ko file mein save karne ka function (Broadcast ke liye)
+def save_user(user_id):
+    try:
+        with open("users.txt", "r") as f:
+            users = f.read().splitlines()
+        if str(user_id) not in users:
+            with open("users.txt", "a") as f:
+                f.write(f"{user_id}\n")
+    except FileNotFoundError:
+        with open("users.txt", "w") as f:
+            f.write(f"{user_id}\n")
 
 def check_sub(user_id):
     try:
@@ -50,12 +62,8 @@ def products_menu():
     )
     return markup
 
-# Exact amount ka dynamic QR generate karne ka function
 def generate_upi_qr(upi_id, amount, filename="dynamic_qr.png"):
-    # UPI standard payment URI format
     upi_url = f"upi://pay?pa={upi_id}&am={amount}&cu=INR&pn=V-Premium"
-    
-    # QR code generate karna
     qr = qrcode.QRCode(
         version=1,
         error_correction=qrcode.constants.ERROR_CORRECT_L,
@@ -64,7 +72,6 @@ def generate_upi_qr(upi_id, amount, filename="dynamic_qr.png"):
     )
     qr.add_data(upi_url)
     qr.make(fit=True)
-    
     img = qr.make_image(fill_color="black", back_color="white")
     img.save(filename)
     return filename
@@ -72,6 +79,8 @@ def generate_upi_qr(upi_id, amount, filename="dynamic_qr.png"):
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = message.from_user.id
+    save_user(user_id)  # User save ho jayega database mein
+    
     if check_sub(user_id):
         bot.send_message(
             message.chat.id, 
@@ -90,10 +99,56 @@ def send_welcome(message):
             parse_mode="Markdown"
         )
 
+# ==================== BROADCAST COMMAND (Only for Admin) ====================
+@bot.message_handler(commands=['broadcast'])
+def broadcast_command(message):
+    if message.from_user.id != ADMIN_ID:
+        bot.send_message(message.chat.id, "❌ Yeh command sirf Admin ke liye hai!")
+        return
+    
+    msg = bot.send_message(
+        message.chat.id, 
+        "📢 **Broadcast Mode On:**\nAb jo bhi message (Text ya Photo with caption) sabhi users ko bhejna hai, wo yahan bhejo:"
+    )
+    bot.register_next_step_handler(msg, send_broadcast_to_all)
+
+def send_broadcast_to_all(message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    
+    try:
+        with open("users.txt", "r") as f:
+            users = f.read().splitlines()
+    except FileNotFoundError:
+        bot.send_message(message.chat.id, "❌ Koi bhi user saved nahi mila database mein!")
+        return
+    
+    success = 0
+    failed = 0
+    
+    bot.send_message(message.chat.id, f"🚀 Broadcasting shuru ho gayi hai... Total users: {len(users)}")
+    
+    for uid in users:
+        try:
+            if message.photo:
+                bot.send_photo(uid, message.photo[-1].file_id, caption=message.caption, parse_mode="Markdown")
+            else:
+                bot.send_message(uid, message.text, parse_mode="Markdown")
+            success += 1
+        except Exception as e:
+            failed += 1
+            
+    bot.send_message(
+        message.chat.id, 
+        f"✅ **Broadcast Complete!**\n\nSuccessful: {success}\nFailed (Users who blocked bot): {failed}"
+    )
+# ===========================================================================
+
 @bot.callback_query_handler(func=lambda call: True)
 def handle_query(call):
     chat_id = call.message.chat.id
     user_id = call.from_user.id
+    save_user(user_id) # Yahan bhi user save ho jayega
     
     if call.data == "verify_sub":
         if check_sub(user_id):
@@ -127,7 +182,6 @@ def handle_query(call):
         )
         
     elif call.data.startswith("buy_"):
-        # Plans ke sath unka exact amount set kar diya hai
         plan_details = {
             "buy_netflix": ("Netflix (1 Month) - ₹99", 99),
             "buy_spotify": ("Spotify (3 Months) - ₹60", 60),
@@ -145,7 +199,6 @@ def handle_query(call):
         caption_text += "Payment karne ke baad payment ka **Screenshot** yahan bhej dein."
         
         try:
-            # Dynamic QR Code generate karke bhejna
             qr_path = generate_upi_qr(UPI_ID, amount)
             with open(qr_path, 'rb') as photo:
                 sent_msg = bot.send_photo(chat_id, photo, caption=caption_text, parse_mode="Markdown")
@@ -187,7 +240,7 @@ def process_screenshot(message, selected_plan):
     
     bot.send_message(
         message.chat.id, 
-        "Aapka payment screenshot receive ho gaya hai! ✅ Admin verification kar raha hai, thoda intezaar karein.",
+        "Aapka payment screenshot receive ho gaya hai! ✅ Admin verification kar raha hai, thoda intezaار karein.",
     )
     
     is_youtube = "youtube" in selected_plan.lower()
@@ -243,6 +296,6 @@ def send_id_to_user(message, target_user_id):
     except Exception as e:
         bot.send_message(message.chat.id, f"❌ Error: User tak message nahi gaya. Shayad usne bot block kar rakha hai.")
 
-print("V-Premium Bot is running with Dynamic QR...")
+print("V-Premium Bot is running with Broadcast System...")
 bot.infinity_polling()
         
