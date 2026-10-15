@@ -1,4 +1,5 @@
 import telebot
+import qrcode
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # ==================== CONFIGURATION ====================
@@ -6,7 +7,6 @@ BOT_TOKEN = "8855553129:AAGbCJEtQZ9dDOvOEzNl8S-2fpPFqiUIGjM"
 CHANNEL_USERNAME = "@villainpremium"
 UPI_ID = "rishabhx07@fam"
 ADMIN_ID = 8551378606
-QR_IMAGE_PATH = "qr.jpg"
 ADMIN_USERNAME = "iwontheracebaby"
 VOUCHES_LINK = "https://t.me/villainpremium"
 # =======================================================
@@ -49,6 +49,25 @@ def products_menu():
         InlineKeyboardButton("🔙 Back to Menu", callback_data="back_main")
     )
     return markup
+
+# Exact amount ka dynamic QR generate karne ka function
+def generate_upi_qr(upi_id, amount, filename="dynamic_qr.png"):
+    # UPI standard payment URI format
+    upi_url = f"upi://pay?pa={upi_id}&am={amount}&cu=INR&pn=V-Premium"
+    
+    # QR code generate karna
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(upi_url)
+    qr.make(fit=True)
+    
+    img = qr.make_image(fill_color="black", back_color="white")
+    img.save(filename)
+    return filename
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -108,28 +127,31 @@ def handle_query(call):
         )
         
     elif call.data.startswith("buy_"):
+        # Plans ke sath unka exact amount set kar diya hai
         plan_details = {
-            "buy_netflix": "Netflix (1 Month) - ₹99",
-            "buy_spotify": "Spotify (3 Months) - ₹60",
-            "buy_youtube": "YouTube Premium (1 Month) - ₹25",
-            "buy_hotstar": "JioHotstar (1 Month) - ₹50",
-            "buy_crunchyroll": "Crunchyroll (1 Month) - ₹50",
-            "buy_prime_1": "Amazon Prime (1 Month) - ₹70",
-            "buy_prime_6": "Amazon Prime (6 Months) - ₹299"
+            "buy_netflix": ("Netflix (1 Month) - ₹99", 99),
+            "buy_spotify": ("Spotify (3 Months) - ₹60", 60),
+            "buy_youtube": ("YouTube Premium (1 Month) - ₹25", 25),
+            "buy_hotstar": ("JioHotstar (1 Month) - ₹50", 50),
+            "buy_crunchyroll": ("Crunchyroll (1 Month) - ₹50", 50),
+            "buy_prime_1": ("Amazon Prime (1 Month) - ₹70", 70),
+            "buy_prime_6": ("Amazon Prime (6 Months) - ₹299", 299)
         }
         
-        selected_plan = plan_details.get(call.data, "Plan")
+        selected_plan, amount = plan_details.get(call.data, ("Plan", 0))
         
         caption_text = f"Aapne select kiya hai: **{selected_plan}**\n\n"
-        caption_text += f"Is QR Code ko scan karke payment karein:\nUPI ID: `{UPI_ID}`\n\n"
+        caption_text += f"Is QR Code ko scan karke exact **₹{amount}** pay karein:\nUPI ID: `{UPI_ID}`\n\n"
         caption_text += "Payment karne ke baad payment ka **Screenshot** yahan bhej dein."
         
         try:
-            with open(QR_IMAGE_PATH, 'rb') as photo:
+            # Dynamic QR Code generate karke bhejna
+            qr_path = generate_upi_qr(UPI_ID, amount)
+            with open(qr_path, 'rb') as photo:
                 sent_msg = bot.send_photo(chat_id, photo, caption=caption_text, parse_mode="Markdown")
                 bot.register_next_step_handler(sent_msg, process_screenshot, selected_plan)
         except Exception as e:
-            sent_msg = bot.send_message(chat_id, caption_text + "\n\n(⚠️ QR image not found in folder, please use UPI ID directly)", parse_mode="Markdown")
+            sent_msg = bot.send_message(chat_id, caption_text + "\n\n(⚠️ QR generation error, please pay directly via UPI ID)", parse_mode="Markdown")
             bot.register_next_step_handler(sent_msg, process_screenshot, selected_plan)
 
     elif call.data.startswith("reply_"):
@@ -221,5 +243,6 @@ def send_id_to_user(message, target_user_id):
     except Exception as e:
         bot.send_message(message.chat.id, f"❌ Error: User tak message nahi gaya. Shayad usne bot block kar rakha hai.")
 
-print("V-Premium Bot is running...")
+print("V-Premium Bot is running with Dynamic QR...")
 bot.infinity_polling()
+        
