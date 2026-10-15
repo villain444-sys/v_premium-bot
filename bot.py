@@ -7,7 +7,7 @@ BOT_TOKEN = "8855553129:AAGbCJEtQZ9dDOvOEzNl8S-2fpPFqiUIGjM"
 CHANNEL_USERNAME = "@villainpremium"
 UPI_ID = "rishabhx07@fam"
 ADMIN_ID = 8551378606
-ADMIN_USERNAME = "rishabhx07"
+ADMIN_USERNAME = "iwontheracebaby"
 VOUCHES_LINK = "https://t.me/villainpremium"
 # =======================================================
 
