@@ -86,7 +86,7 @@ def products_menu():
     )
     markup.add(
         InlineKeyboardButton("🎵 Spotify (3M) - ₹60", callback_data="buy_spotify"),
-        InlineKeyboardButton("▶️ YouTube Pro - ₹25", callback_data="buy_youtube")
+        InlineKeyboardButton("▶️ YouTube Premium - ₹30", callback_data="buy_youtube")
     )
     markup.add(
         InlineKeyboardButton("🌐 JioHotstar - ₹50", callback_data="buy_hotstar"),
