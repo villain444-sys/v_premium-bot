@@ -1,4 +1,6 @@
 pyTelegramBotAPI
 qrcode[pil]
 Pillow
+Flask
+
 
