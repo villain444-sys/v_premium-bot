@@ -1,5 +1,7 @@
 import telebot
 import qrcode
+import threading
+from flask import Flask
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # ==================== CONFIGURATION ====================
@@ -13,17 +15,8 @@ VOUCHES_LINK = "https://t.me/villainpremium"
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# User ID ko file mein save karne ka function (Broadcast ke liye)
-def save_user(user_id):
-    try:
-        with open("users.txt", "r") as f:
-            users = f.read().splitlines()
-        if str(user_id) not in users:
-            with open("users.txt", "a") as f:
-                f.write(f"{user_id}\n")
-    except FileNotFoundError:
-        with open("users.txt", "w") as f:
-            f.write(f"{user_id}\n")
+# Referral data store karne ke liye
+referrals = {}
 
 def check_sub(user_id):
     try:
@@ -38,6 +31,7 @@ def main_home_menu():
     markup = InlineKeyboardMarkup(row_width=1)
     markup.add(
         InlineKeyboardButton("🛍️ Products", callback_data="open_products"),
+        InlineKeyboardButton("🎁 Refer & Earn", callback_data="referral_menu"),
         InlineKeyboardButton("💬 Support / Help", url=f"https://t.me/{ADMIN_USERNAME}"),
         InlineKeyboardButton("⭐ Vouches / Proofs", url=VOUCHES_LINK)
     )
@@ -79,12 +73,25 @@ def generate_upi_qr(upi_id, amount, filename="dynamic_qr.png"):
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = message.from_user.id
-    save_user(user_id)  # User save ho jayega database mein
     
+    # Referral tracking
+    args = message.text.split()
+    if len(args) > 1:
+        referrer_id = args[1]
+        if referrer_id.isdigit():
+            ref_id = int(referrer_id)
+            if ref_id != user_id:
+                if user_id not in referrals and ref_id not in referrals.values():
+                    referrals[ref_id] = referrals.get(ref_id, 0) + 1
+                    try:
+                        bot.send_message(ref_id, "🎉 **Badhai ho!** Aapke referral link se ek naye user ne bot join kiya hai!")
+                    except:
+                        pass
+
     if check_sub(user_id):
         bot.send_message(
             message.chat.id, 
-            "Welcome to V-Premium! 🎉 Sabse saste aur reliable premium accounts.\nNiche diye gaye options mein se select karein:", 
+            "Welcome to V-Premium! 🎉 Sabse saste aur reliable premium accounts.\nNiche diye gaye options mein select karein:", 
             reply_markup=main_home_menu()
         )
     else:
@@ -99,61 +106,15 @@ def send_welcome(message):
             parse_mode="Markdown"
         )
 
-# ==================== BROADCAST COMMAND (Only for Admin) ====================
-@bot.message_handler(commands=['broadcast'])
-def broadcast_command(message):
-    if message.from_user.id != ADMIN_ID:
-        bot.send_message(message.chat.id, "❌ Yeh command sirf Admin ke liye hai!")
-        return
-    
-    msg = bot.send_message(
-        message.chat.id, 
-        "📢 **Broadcast Mode On:**\nAb jo bhi message (Text ya Photo with caption) sabhi users ko bhejna hai, wo yahan bhejo:"
-    )
-    bot.register_next_step_handler(msg, send_broadcast_to_all)
-
-def send_broadcast_to_all(message):
-    if message.from_user.id != ADMIN_ID:
-        return
-    
-    try:
-        with open("users.txt", "r") as f:
-            users = f.read().splitlines()
-    except FileNotFoundError:
-        bot.send_message(message.chat.id, "❌ Koi bhi user saved nahi mila database mein!")
-        return
-    
-    success = 0
-    failed = 0
-    
-    bot.send_message(message.chat.id, f"🚀 Broadcasting shuru ho gayi hai... Total users: {len(users)}")
-    
-    for uid in users:
-        try:
-            if message.photo:
-                bot.send_photo(uid, message.photo[-1].file_id, caption=message.caption, parse_mode="Markdown")
-            else:
-                bot.send_message(uid, message.text, parse_mode="Markdown")
-            success += 1
-        except Exception as e:
-            failed += 1
-            
-    bot.send_message(
-        message.chat.id, 
-        f"✅ **Broadcast Complete!**\n\nSuccessful: {success}\nFailed (Users who blocked bot): {failed}"
-    )
-# ===========================================================================
-
 @bot.callback_query_handler(func=lambda call: True)
 def handle_query(call):
     chat_id = call.message.chat.id
     user_id = call.from_user.id
-    save_user(user_id) # Yahan bhi user save ho jayega
     
     if call.data == "verify_sub":
         if check_sub(user_id):
             bot.delete_message(chat_id, call.message.message_id)
-            bot.send_message(chat_id, "Verification Successful! 🎉\nNiche diye gaye options mein se select karein:", reply_markup=main_home_menu())
+            bot.send_message(chat_id, "Verification Successful! 🎉\nNiche diye gaye options mein select karein:", reply_markup=main_home_menu())
         else:
             bot.answer_callback_query(call.id, "❌ Aapne abhi tak channel join nahi kiya hai! Pehle join karein.", show_alert=True)
             
@@ -166,6 +127,21 @@ def handle_query(call):
             parse_mode="Markdown"
         )
         
+    elif call.data == "referral_menu":
+        bot.answer_callback_query(call.id)
+        bot_info = bot.get_me()
+        referral_link = f"https://t.me/{bot_info.username}?start={user_id}"
+        my_count = referrals.get(user_id, 0)
+        
+        ref_text = f"🎁 **Refer & Earn Program**\n\n"
+        ref_text += f"Apne doston ko apna unique link share karein. Jab bhi koi dost is link se bot join karega, aapka count badh jayega!\n\n"
+        ref_text += f"📊 **Aapke Total Referrals:** `{my_count}` Doston\n\n"
+        ref_text += f"🔗 **Aapka Referral Link:**\n`{referral_link}`"
+        
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("🔙 Back to Menu", callback_data="back_main"))
+        bot.edit_message_text(ref_text, chat_id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
+        
     elif call.data == "menu_prime":
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("1 Month - ₹70", callback_data="buy_prime_1"))
@@ -175,7 +151,7 @@ def handle_query(call):
         
     elif call.data == "back_main":
         bot.edit_message_text(
-            "Welcome to V-Premium! 🎉 Sabse saste aur reliable premium accounts.\nNiche diye gaye options mein se select karein:", 
+            "Welcome to V-Premium! 🎉 Sabse saste aur reliable premium accounts.\nNiche diye gaye options mein select karein:", 
             chat_id, 
             call.message.message_id, 
             reply_markup=main_home_menu()
@@ -204,7 +180,7 @@ def handle_query(call):
                 sent_msg = bot.send_photo(chat_id, photo, caption=caption_text, parse_mode="Markdown")
                 bot.register_next_step_handler(sent_msg, process_screenshot, selected_plan)
         except Exception as e:
-            sent_msg = bot.send_message(chat_id, caption_text + "\n\n(⚠️ QR generation error, please pay directly via UPI ID)", parse_mode="Markdown")
+            sent_msg = bot.send_message(chat_id, caption_text + "\n\n(⚠️ QR generation error)", parse_mode="Markdown")
             bot.register_next_step_handler(sent_msg, process_screenshot, selected_plan)
 
     elif call.data.startswith("reply_"):
@@ -222,10 +198,10 @@ def handle_query(call):
     elif call.data.startswith("reject_"):
         target_user_id = call.data.split("_")[1]
         try:
-            bot.send_message(target_user_id, "❌ Aapka payment screenshot verify nahi ho paya. Kripya sahi screenshot dobara bhejein.")
+            bot.send_message(target_user_id, "❌ Aapka payment screenshot verify nahi ho paya.")
             bot.send_message(chat_id, "❌ Order reject kar diya gaya hai.")
         except:
-            bot.send_message(chat_id, "❌ User tak message nahi gaya.")
+            pass
 
 def process_screenshot(message, selected_plan):
     user_id = message.from_user.id
@@ -240,7 +216,7 @@ def process_screenshot(message, selected_plan):
     
     bot.send_message(
         message.chat.id, 
-        "Aapka payment screenshot receive ho gaya hai! ✅ Admin verification kar raha hai, thoda intezaار karein.",
+        "Aapka payment screenshot receive ho gaya hai! ✅ Admin verification kar raha hai.",
     )
     
     is_youtube = "youtube" in selected_plan.lower()
@@ -269,7 +245,7 @@ def ask_for_gmail(message, target_user_id):
         bot.register_next_step_handler(sent_msg, receive_user_gmail)
         bot.send_message(message.chat.id, "✅ User ke paas Gmail mangne ka message bhej diya gaya hai!")
     except Exception as e:
-        bot.send_message(message.chat.id, f"❌ Error: User tak message nahi gaya. Shayad usne bot block kar rakha hai.")
+        bot.send_message(message.chat.id, "❌ Error: User tak message nahi gaya.")
 
 def receive_user_gmail(message):
     user_id = message.from_user.id
@@ -278,24 +254,39 @@ def receive_user_gmail(message):
     
     bot.send_message(
         ADMIN_ID, 
-        f"📩 **Received Gmail from User!**\n\n👤 User: @{username if username else 'No Username'} (ID: `{user_id}`)\n📧 Gmail: `{user_gmail}`\n\nAb aap is Gmail par YouTube invite bhej sakte hain!",
+        f"📩 **Received Gmail from User!**\n\n👤 User: @{username if username else 'No Username'} (ID: `{user_id}`)\n📧 Gmail: `{user_gmail}`",
         parse_mode="Markdown"
     )
-    bot.send_message(chat_id=user_id, text="✅ Aapki Gmail receive ho gayi hai! Jaldi hi aapko YouTube Premium activate karke de diya jayega. Thank you! 🙏")
+    bot.send_message(chat_id=user_id, text="✅ Aapki Gmail receive ho gayi hai! Jaldi hi account mil jayega.")
 
 def send_id_to_user(message, target_user_id):
     account_details = message.text
-    
     try:
         bot.send_message(
             target_user_id, 
-            f"🎉 **Aapka Payment Verify Ho Gaya Hai!**\n\nAapka Account Details:\n\n{account_details}\n\nThank you for buying from V-Premium! 🙏",
+            f"🎉 **Aapka Payment Verify Ho Gaya Hai!**\n\nAapka Account Details:\n\n{account_details}\n\nThank you!",
             parse_mode="Markdown"
         )
-        bot.send_message(message.chat.id, "✅ ID/Password successfully user ko bhej diya gaya hai!")
+        bot.send_message(message.chat.id, "✅ ID/Password successfully bhej diya gaya hai!")
     except Exception as e:
-        bot.send_message(message.chat.id, f"❌ Error: User tak message nahi gaya. Shayad usne bot block kar rakha hai.")
+        bot.send_message(message.chat.id, "❌ Error: User tak message nahi gaya.")
 
-print("V-Premium Bot is running with Broadcast System...")
-bot.infinity_polling()
-        
+# ==================== FLASK SERVER FOR RENDER ====================
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "V-Premium Bot is Alive!"
+
+def run_flask():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = threading.Thread(target=run_flask)
+    t.start()
+
+if __name__ == "__main__":
+    keep_alive()
+    print("V-Premium Bot is running with Flask Port Binding...")
+    bot.infinity_polling()
+    
