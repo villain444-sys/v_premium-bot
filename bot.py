@@ -7,7 +7,7 @@ from flask import Flask
 from threading import Thread
 
 # ==================== CONFIGURATION ====================
-BOT_TOKEN = "8855553129:AAGbCJEtQZ9dDOvOEzNl8S-2fpPFqiUIGjM"
+BOT_TOKEN = "8855553129:AAFrGMhzUwEIh6tCh5WkJhNts6lzClRPK_I"
 CHANNEL_USERNAME = "@villainpremium"
 UPI_ID = "rishabhx07@fam"
 ADMIN_ID = 8551378606
