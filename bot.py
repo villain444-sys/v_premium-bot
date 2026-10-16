@@ -1,19 +1,52 @@
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import os
+import io
+import qrcode
+from flask import Flask
+from threading import Thread
 
 # ==================== CONFIGURATION ====================
 BOT_TOKEN = "8855553129:AAGbCJEtQZ9dDOvOEzNl8S-2fpPFqiUIGjM"
 CHANNEL_USERNAME = "@villainpremium"
 UPI_ID = "rishabhx07@fam"
 ADMIN_ID = 8551378606
-QR_IMAGE_PATH = "qr.jpg"
 ADMIN_USERNAME = "iwontheracebaby"
 VOUCHES_LINK = "https://t.me/villainpremium"
 USERS_FILE = "users.txt"
 # =======================================================
 
 bot = telebot.TeleBot(BOT_TOKEN)
+
+# ==================== FLASK SERVER FOR RENDER PORT ====================
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "V-Premium Bot is Alive!"
+
+def run_flask():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run_flask)
+    t.start()
+# ======================================================================
+
+# ==================== DYNAMIC QR GENERATOR ====================
+def generate_dynamic_qr(upi_id, amount, name="V-Premium"):
+    upi_url = f"upi://pay?pa={upi_id}&pn={name}&am={amount}&cu=INR"
+    qr = qrcode.QRCode(version=1, box_size=10, border=4)
+    qr.add_data(upi_url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    bio = io.BytesIO()
+    bio.name = 'qr.png'
+    img.save(bio, 'PNG')
+    bio.seek(0)
+    return bio
+# ==============================================================
 
 def save_user(user_id):
     if not os.path.exists(USERS_FILE):
@@ -163,28 +196,30 @@ def handle_query(call):
         )
         
     elif call.data.startswith("buy_"):
-        plan_details = {
-            "buy_netflix": "Netflix (1 Month) - ₹99",
-            "buy_spotify": "Spotify (3 Months) - ₹60",
-            "buy_youtube": "YouTube Premium (1 Month) - ₹25",
-            "buy_hotstar": "JioHotstar (1 Month) - ₹50",
-            "buy_crunchyroll": "Crunchyroll (1 Month) - ₹50",
-            "buy_prime_1": "Amazon Prime (1 Month) - ₹70",
-            "buy_prime_6": "Amazon Prime (6 Months) - ₹299"
+        plan_data = {
+            "buy_netflix": ("Netflix (1 Month)", 99),
+            "buy_spotify": ("Spotify (3 Months)", 60),
+            "buy_youtube": ("YouTube Premium (1 Month)", 25),
+            "buy_hotstar": ("JioHotstar (1 Month)", 50),
+            "buy_crunchyroll": ("Crunchyroll (1 Month)", 50),
+            "buy_prime_1": ("Amazon Prime (1 Month)", 70),
+            "buy_prime_6": ("Amazon Prime (6 Months)", 299)
         }
         
-        selected_plan = plan_details.get(call.data, "Plan")
+        plan_info = plan_data.get(call.data, ("Plan", 10))
+        selected_plan = f"{plan_info[0]} - ₹{plan_info[1]}"
+        amount = plan_info[1]
         
         caption_text = f"Aapne select kiya hai: **{selected_plan}**\n\n"
-        caption_text += f"Is QR Code ko scan karke payment karein:\nUPI ID: `{UPI_ID}`\n\n"
+        caption_text += f"Is Dynamic QR Code ko scan karke payment karein (Amount pre-filled hai):\nUPI ID: `{UPI_ID}`\n\n"
         caption_text += "Payment karne ke baad payment ka **Screenshot** yahan bhej dein."
         
         try:
-            with open(QR_IMAGE_PATH, 'rb') as photo:
-                sent_msg = bot.send_photo(chat_id, photo, caption=caption_text, parse_mode="Markdown")
-                bot.register_next_step_handler(sent_msg, process_screenshot, selected_plan)
+            qr_photo = generate_dynamic_qr(UPI_ID, amount)
+            sent_msg = bot.send_photo(chat_id, qr_photo, caption=caption_text, parse_mode="Markdown")
+            bot.register_next_step_handler(sent_msg, process_screenshot, selected_plan)
         except Exception as e:
-            sent_msg = bot.send_message(chat_id, caption_text + "\n\n(⚠️ QR image not found in folder, please use UPI ID directly)", parse_mode="Markdown")
+            sent_msg = bot.send_message(chat_id, caption_text + "\n\n(⚠️ QR generation error, please pay via UPI ID directly)", parse_mode="Markdown")
             bot.register_next_step_handler(sent_msg, process_screenshot, selected_plan)
 
     elif call.data.startswith("reply_"):
@@ -220,7 +255,7 @@ def process_screenshot(message, selected_plan):
     
     bot.send_message(
         message.chat.id, 
-        "Aapka payment screenshot receive ho gaya hai! ✅ Admin verification kar raha hai, thoda intezaار karein.",
+        "Aapka payment screenshot receive ho gaya hai! ✅ Admin verification kar raha hai, thoda intezaar karein.",
     )
     
     is_youtube = "youtube" in selected_plan.lower()
@@ -276,8 +311,12 @@ def send_id_to_user(message, target_user_id):
     except Exception as e:
         bot.send_message(message.chat.id, f"❌ Error: User tak message nahi gaya. Shayad usne bot block kar rakha hai.")
 
-# Conflict error fix karne ke liye remove_webhook aur skip_pending add kiya hai
-bot.remove_webhook()
-print("V-Premium Bot is running...")
-bot.infinity_polling(skip_pending=True)
+if __name__ == '__main__':
+    # Start Flask server in background thread for Render port binding
+    keep_alive()
     
+    # Start Telegram Bot
+    bot.remove_webhook()
+    print("V-Premium Bot with Dynamic QR & Flask is running...")
+    bot.infinity_polling(skip_pending=True)
+                      
